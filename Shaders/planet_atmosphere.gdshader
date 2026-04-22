@@ -27,6 +27,7 @@ void fragment() {
     vec3 cam_from_center = CAMERA_POSITION_WORLD - planet_center_ws;
     float cam_radius = length(cam_from_center);
     bool inside_atmosphere = cam_radius < atmosphere_radius;
+    vec3 cam_up = cam_radius > 0.0001 ? cam_from_center / cam_radius : vec3(0.0, 1.0, 0.0);
 
     // Render only the geometrically correct side of the shell.
     float face_sign = dot(up, view_dir);
@@ -41,15 +42,17 @@ void fragment() {
     float cam_h01 = clamp((cam_radius - planet_radius) / shell_h, 0.0, 1.0);
     float mu = clamp(abs(face_sign), 0.02, 1.0);
 
-    // Air mass approximation: longer path near horizon, but keep a non-zero center contribution.
+    // Air mass approximation: much stronger near horizon, modest at disc center.
     float horizon_weight = 1.0 - mu;
-    float air_mass = 1.0 / (mu * 0.78 + 0.22);
-    float density = atmosphere_density * mix(1.0, 0.78, clamp(cam_h01, 0.0, 1.0));
-    float scatter_amount = 1.0 - exp(-air_mass * density * (0.22 + horizon_weight * 0.28));
+    float air_mass = 1.0 / (mu * 0.92 + 0.08);
+    float density = atmosphere_density * mix(1.0, 0.68, clamp(cam_h01, 0.0, 1.0));
+    float scatter_amount = 1.0 - exp(-air_mass * density * (0.09 + horizon_weight * 0.36));
 
     float mu_sun = dot(up, sun_dir);
-    float day = smoothstep(-0.04, 0.24, mu_sun);
-    float twilight = smoothstep(-0.2, 0.03, mu_sun) * (1.0 - smoothstep(0.03, 0.14, mu_sun));
+    float day = smoothstep(-0.08, 0.2, mu_sun);
+    float twilight_outer = smoothstep(-0.30, 0.05, mu_sun) * (1.0 - smoothstep(0.05, 0.26, mu_sun));
+    float twilight_inner = smoothstep(-0.38, 0.08, mu_sun) * (1.0 - smoothstep(0.08, 0.34, mu_sun));
+    float twilight = inside_atmosphere ? twilight_inner : twilight_outer;
 
     float mu_view = dot(-view_dir, sun_dir);
 
@@ -58,18 +61,23 @@ void fragment() {
     float denom = pow(max(0.1, 1.0 + g * g - 2.0 * g * mu_view), 1.5);
     float phase_mie = (1.0 - g * g) / (4.0 * 3.14159265 * denom);
 
-    float horizon = pow(clamp(horizon_weight, 0.0, 1.0), inside_atmosphere ? 0.5 : 1.05);
+    float horizon = pow(clamp(horizon_weight, 0.0, 1.0), inside_atmosphere ? 0.72 : 1.2);
 
-    vec3 sky = rayleigh_rgb * phase_rayleigh * scatter_amount * (0.42 + day * 0.62 + horizon * 0.25);
-    vec3 haze = mie_rgb * phase_mie * scatter_amount * (0.15 + day * 0.3 + horizon * 0.18);
+    float day_visibility = mix(0.12, 1.0, day);
+    vec3 sky = rayleigh_rgb * phase_rayleigh * scatter_amount * day_visibility * (0.14 + day * 0.58 + horizon * 0.72);
+    vec3 haze = mie_rgb * phase_mie * scatter_amount * day_visibility * (0.05 + day * 0.22 + horizon * 0.2);
 
-    float toward_sun = pow(max(dot(-view_dir, sun_dir), 0.0), 1.7);
-    vec3 sunset_tint = vec3(1.0, 0.42, 0.22) * twilight * scatter_amount * toward_sun * sunset_strength;
+    float toward_sun = pow(max(dot(-view_dir, sun_dir), 0.0), inside_atmosphere ? 0.85 : 1.2);
+    float view_horizon = 1.0 - clamp(dot(up, cam_up), 0.0, 1.0);
+    float sunset_horizon_mask = pow(view_horizon, inside_atmosphere ? 0.72 : 0.82);
+    float sunset_inside_boost = inside_atmosphere ? 1.9 : 1.0;
+    vec3 sunset_tint = vec3(1.15, 0.5, 0.26) * twilight * scatter_amount * toward_sun * sunset_horizon_mask * sunset_strength * sunset_inside_boost;
 
-    vec3 absorb = ozone_absorption_rgb * (0.2 + (1.0 - day) * 0.45) * scatter_amount;
+    vec3 absorb = ozone_absorption_rgb * (0.2 + (1.0 - day) * 0.52) * scatter_amount;
     vec3 color = max(vec3(0.0), sky + haze + sunset_tint - absorb);
 
     ALBEDO = color;
-    float alpha = clamp((0.09 + scatter_amount * (0.46 + horizon * 0.22)) * (0.65 + day * 0.35), 0.0, inside_atmosphere ? 0.82 : 0.58);
+    float alpha_day_term = 0.18 + day * 0.82 + twilight * (inside_atmosphere ? 0.42 : 0.2);
+    float alpha = clamp((0.02 + scatter_amount * (0.12 + horizon * 0.68)) * alpha_day_term, 0.0, inside_atmosphere ? 0.82 : 0.52);
     ALPHA = alpha;
 }
