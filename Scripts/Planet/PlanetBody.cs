@@ -617,6 +617,7 @@ public partial class PlanetBody : Node3D
         SphereMesh shell = new SphereMesh
         {
             Radius = 1.0f,
+            Height = 2.0f,
             RadialSegments = 96,
             Rings = 48,
         };
