@@ -1,0 +1,138 @@
+[gd_scene load_steps=9 format=3 uid="uid://bxfh0i1r5mav5"]
+
+[ext_resource type="Script" path="res://Scripts/World/SolarSystemController.cs" id="1_hjs3j"]
+[ext_resource type="Script" path="res://Scripts/Planet/PlanetBody.cs" id="2_hu2ap"]
+[ext_resource type="Script" path="res://Scripts/Planet/CelestialMotion.cs" id="3_2ly1l"]
+[ext_resource type="Script" path="res://Scripts/Player/SpaceExplorerController.cs" id="4_0h7yg"]
+[ext_resource type="Script" path="res://Scripts/Planet/Atmosphere/RayleighAtmosphereController.cs" id="5_iy4vp"]
+[ext_resource type="Script" path="res://Scripts/UI/AtmosphereCompositionHud.cs" id="6_8n2kk"]
+
+[sub_resource type="Environment" id="Environment_tq2fu"]
+background_mode = 2
+background_color = Color(0.03, 0.045, 0.085, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.28, 0.31, 0.45, 1)
+ambient_light_energy = 1.15
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_qnjdr"]
+radius = 0.9
+height = 2.2
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_hjs3j")
+PlanetPath = NodePath("Planet")
+PlayerPath = NodePath("Player")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_tq2fu")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.258819, 0, 0.965926, 0.330366, 0.939693, -0.0885213, -0.907673, 0.34202, 0.24321, 0, 520, 0)
+light_energy = 2.4
+shadow_enabled = true
+
+[node name="Planet" type="Node3D" parent="."]
+script = ExtResource("2_hu2ap")
+Radius = 220.0
+MaxHeight = 110.0
+BaseResolution = 8
+MaxLodLevel = 2
+LodUpdateInterval = 0.4
+HeightScale = 1.85
+BaseFrequency = 2.1
+BaseReliefStrength = 0.32
+DetailFrequency = 22.0
+DetailStrength = 0.08
+MariaFrequency = 1.05
+MariaThreshold = 0.6
+MariaDepression = 0.18
+MariaDetailSuppression = 0.72
+SpikeSoftClamp = 0.82
+AngularSmoothingStrength = 0.62
+AngularSmoothingRadiusDeg = 0.7
+CraterCount = 320
+CraterMinRadiusDeg = 0.9
+CraterMaxRadiusDeg = 11.0
+LargeCraterRatio = 0.14
+CraterDepthScale = 0.34
+CraterRimHeightScale = 0.36
+CraterRimWidth = 0.34
+CraterBlendStrength = 1.2
+UseAntiCellCraterTool = true
+AntiCellFrequency = 2.15
+AntiCellThreshold = 0.56
+AntiCellJitter = 0.5
+AntiCellCandidateMultiplier = 8
+CraterMinAngularSeparationDeg = 0.42
+Seed = 1337
+RandomizeSeedOnReady = true
+SurfaceColor = Color(0.92, 0.92, 0.9, 1)
+HighlandColor = Color(0.73, 0.69, 0.64, 1)
+MariaColor = Color(0.34, 0.35, 0.37, 1)
+CraterRimColor = Color(0.86, 0.79, 0.68, 1)
+CraterFloorColor = Color(0.22, 0.22, 0.24, 1)
+ColorContrastStrength = 0.72
+
+[node name="CelestialMotion" type="Node3D" parent="Planet"]
+script = ExtResource("3_2ly1l")
+SelfRotationDegreesPerSecond = 1.4
+
+[node name="Atmosphere" type="Node3D" parent="Planet"]
+script = ExtResource("5_iy4vp")
+PlanetPath = NodePath("..")
+SunLightPath = NodePath("../../DirectionalLight3D")
+AtmosphereHeight = 62.0
+RayleighStrength = 2.8
+DensityFalloff = 3.8
+AtmosphereAlpha = 0.9
+RandomizeCompositionOnReady = true
+UsePlanetSeedForRandomComposition = true
+RandomCompositionSeed = 0
+Nitrogen = 0.78
+Oxygen = 0.21
+Argon = 0.01
+CarbonDioxide = 0.0004
+Methane = 0.0
+Hydrogen = 0.0
+Helium = 0.0
+ScatterScale = 1.0
+
+[node name="Player" type="CharacterBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 255, 0)
+script = ExtResource("4_0h7yg")
+PlanetPath = NodePath("../Planet")
+MoveMode = 1
+MoveSpeed = 34.0
+MouseSensitivity = 0.0023
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Player"]
+shape = SubResource("CapsuleShape3D_qnjdr")
+
+[node name="Camera3D" type="Camera3D" parent="Player"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.4, 0)
+current = true
+fov = 80.0
+
+[node name="PlayerFillLight" type="OmniLight3D" parent="Player"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.4, 0)
+light_energy = 1.8
+omni_range = 80.0
+shadow_enabled = false
+
+[node name="Hud" type="CanvasLayer" parent="."]
+layer = 10
+script = ExtResource("6_8n2kk")
+AtmospherePath = NodePath("../Planet/Atmosphere")
+LabelPath = NodePath("CompositionLabel")
+RefreshInterval = 0.3
+
+[node name="CompositionLabel" type="Label" parent="Hud"]
+offset_left = 20.0
+offset_top = 18.0
+offset_right = 360.0
+offset_bottom = 210.0
+theme_override_colors/font_color = Color(0.92, 0.95, 1, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.9)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+text = "Atmosphere Composition"
