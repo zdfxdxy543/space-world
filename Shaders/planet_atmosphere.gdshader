@@ -26,19 +26,24 @@ void fragment() {
 
     vec3 cam_from_center = CAMERA_POSITION_WORLD - planet_center_ws;
     float cam_radius = length(cam_from_center);
-    bool inside_atmosphere = cam_radius < atmosphere_radius;
+    float shell_h = max(0.0001, atmosphere_radius - planet_radius);
+    float transition_band = max(0.65, shell_h * 0.65);
+    float inside_factor = smoothstep(
+        atmosphere_radius + transition_band,
+        atmosphere_radius - transition_band,
+        cam_radius);
+    bool inside_atmosphere = inside_factor > 0.5;
     vec3 cam_up = cam_radius > 0.0001 ? cam_from_center / cam_radius : vec3(0.0, 1.0, 0.0);
 
-    // Render only the geometrically correct side of the shell.
+    // Blend side visibility near the boundary to avoid hard popping when crossing the shell.
     float face_sign = dot(up, view_dir);
-    if (!inside_atmosphere && face_sign <= 0.0) {
-        discard;
-    }
-    if (inside_atmosphere && face_sign >= 0.0) {
+    float outside_side = smoothstep(-0.12, 0.12, face_sign);
+    float inside_side = smoothstep(0.12, -0.12, face_sign);
+    float side_visibility = mix(outside_side, inside_side, inside_factor);
+    if (side_visibility <= 0.001) {
         discard;
     }
 
-    float shell_h = max(0.0001, atmosphere_radius - planet_radius);
     float cam_h01 = clamp((cam_radius - planet_radius) / shell_h, 0.0, 1.0);
     float mu = clamp(abs(face_sign), 0.02, 1.0);
 
@@ -52,7 +57,7 @@ void fragment() {
     float day = smoothstep(-0.08, 0.2, mu_sun);
     float twilight_outer = smoothstep(-0.30, 0.05, mu_sun) * (1.0 - smoothstep(0.05, 0.26, mu_sun));
     float twilight_inner = smoothstep(-0.38, 0.08, mu_sun) * (1.0 - smoothstep(0.08, 0.34, mu_sun));
-    float twilight = inside_atmosphere ? twilight_inner : twilight_outer;
+    float twilight = mix(twilight_outer, twilight_inner, inside_factor);
 
     float mu_view = dot(-view_dir, sun_dir);
 
@@ -61,23 +66,33 @@ void fragment() {
     float denom = pow(max(0.1, 1.0 + g * g - 2.0 * g * mu_view), 1.5);
     float phase_mie = (1.0 - g * g) / (4.0 * 3.14159265 * denom);
 
-    float horizon = pow(clamp(horizon_weight, 0.0, 1.0), inside_atmosphere ? 0.72 : 1.2);
+    float horizon_power = mix(1.05, 0.78, inside_factor);
+    float horizon = pow(clamp(horizon_weight, 0.0, 1.0), horizon_power);
 
     float day_visibility = mix(0.12, 1.0, day);
-    vec3 sky = rayleigh_rgb * phase_rayleigh * scatter_amount * day_visibility * (0.14 + day * 0.58 + horizon * 0.72);
-    vec3 haze = mie_rgb * phase_mie * scatter_amount * day_visibility * (0.05 + day * 0.22 + horizon * 0.2);
+    vec3 sky = rayleigh_rgb * phase_rayleigh * scatter_amount * day_visibility * (0.16 + day * 0.56 + horizon * 0.5);
+    vec3 haze = mie_rgb * phase_mie * scatter_amount * day_visibility * (0.06 + day * 0.2 + horizon * 0.14);
 
-    float toward_sun = pow(max(dot(-view_dir, sun_dir), 0.0), inside_atmosphere ? 0.85 : 1.2);
+    float toward_sun_power = mix(1.2, 0.85, inside_factor);
+    float toward_sun = pow(max(dot(-view_dir, sun_dir), 0.0), toward_sun_power);
     float view_horizon = 1.0 - clamp(dot(up, cam_up), 0.0, 1.0);
-    float sunset_horizon_mask = pow(view_horizon, inside_atmosphere ? 0.72 : 0.82);
-    float sunset_inside_boost = inside_atmosphere ? 1.9 : 1.0;
+    float sunset_horizon_power = mix(0.82, 0.72, inside_factor);
+    float sunset_horizon_mask = pow(view_horizon, sunset_horizon_power);
+    float sunset_inside_boost = mix(1.0, 1.9, inside_factor);
     vec3 sunset_tint = vec3(1.15, 0.5, 0.26) * twilight * scatter_amount * toward_sun * sunset_horizon_mask * sunset_strength * sunset_inside_boost;
 
     vec3 absorb = ozone_absorption_rgb * (0.2 + (1.0 - day) * 0.52) * scatter_amount;
     vec3 color = max(vec3(0.0), sky + haze + sunset_tint - absorb);
 
     ALBEDO = color;
-    float alpha_day_term = 0.18 + day * 0.82 + twilight * (inside_atmosphere ? 0.42 : 0.2);
-    float alpha = clamp((0.02 + scatter_amount * (0.12 + horizon * 0.68)) * alpha_day_term, 0.0, inside_atmosphere ? 0.82 : 0.52);
-    ALPHA = alpha;
+    float twilight_alpha_boost = mix(0.2, 0.42, inside_factor);
+    float alpha_day_term = 0.18 + day * 0.82 + twilight * twilight_alpha_boost;
+    float alpha_cap = mix(0.52, 0.82, inside_factor);
+    float alpha = clamp((0.03 + scatter_amount * (0.16 + horizon * 0.42)) * alpha_day_term, 0.0, alpha_cap);
+
+    // External view: suppress hard limb ring without killing shell visibility.
+    float outside_factor = 1.0 - inside_factor;
+    float limb_soften = 1.0 - 0.2 * outside_factor * smoothstep(0.58, 0.98, horizon);
+
+    ALPHA = alpha * side_visibility * limb_soften;
 }
