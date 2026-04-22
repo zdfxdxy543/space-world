@@ -4,8 +4,6 @@
 [ext_resource type="Script" uid="uid://bdm5fwqmxwqd7" path="res://Scripts/Planet/PlanetBody.cs" id="2_hu2ap"]
 [ext_resource type="Script" uid="uid://cogrseujw52ql" path="res://Scripts/Planet/CelestialMotion.cs" id="3_2ly1l"]
 [ext_resource type="Script" uid="uid://nili4mg2wtlm" path="res://Scripts/Player/SpaceExplorerController.cs" id="4_0h7yg"]
-[ext_resource type="Script" uid="uid://jsmj7hvcgbiu" path="res://Scripts/Planet/Atmosphere/RayleighAtmosphereController.cs" id="5_iy4vp"]
-[ext_resource type="Script" uid="uid://baui7t7x5pxva" path="res://Scripts/UI/AtmosphereCompositionHud.cs" id="6_8n2kk"]
 
 [sub_resource type="Environment" id="Environment_tq2fu"]
 background_mode = 2
@@ -68,17 +66,11 @@ MariaColor = Color(0.34, 0.35, 0.37, 1)
 CraterRimColor = Color(0.86, 0.79, 0.68, 1)
 CraterFloorColor = Color(0.22, 0.22, 0.24, 1)
 ColorContrastStrength = 0.72
+AtmosphereRadiusMultiplier = 1.15
 
 [node name="CelestialMotion" type="Node3D" parent="Planet" unique_id=382079237]
 script = ExtResource("3_2ly1l")
 SelfRotationDegreesPerSecond = 1.4
-
-[node name="Atmosphere" type="Node3D" parent="Planet" unique_id=22585855]
-script = ExtResource("5_iy4vp")
-PlanetPath = NodePath("..")
-SunLightPath = NodePath("../../DirectionalLight3D")
-AtmosphereHeight = 1000.0
-SeaLevelPressure = 0.5
 
 [node name="Player" type="CharacterBody3D" parent="." unique_id=1181473724]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 255, 0)
@@ -103,10 +95,6 @@ omni_range = 45.0
 
 [node name="Hud" type="CanvasLayer" parent="." unique_id=1888633884]
 layer = 10
-script = ExtResource("6_8n2kk")
-AtmospherePath = NodePath("../Planet/Atmosphere")
-LabelPath = NodePath("CompositionLabel")
-RefreshInterval = 0.3
 
 [node name="CompositionLabel" type="Label" parent="Hud" unique_id=710308955]
 offset_left = 20.0

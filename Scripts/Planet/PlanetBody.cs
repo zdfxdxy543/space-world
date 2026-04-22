@@ -52,6 +52,26 @@ public partial class PlanetBody : Node3D
     [Export] public Color CraterFloorColor = new Color("3f3d3b");
     [Export] public float ColorContrastStrength = 0.55f;
 
+    [ExportGroup("Atmosphere")]
+    [Export] public bool EnableAtmosphere = true;
+    [Export(PropertyHint.Range, "1.0,1.15,0.001")] public float AtmosphereRadiusMultiplier = 0.0f;
+    [Export(PropertyHint.Range, "0.0,10.0,0.1")] public float AtmosphereBaseOffset = 0.8f;
+    [Export(PropertyHint.Range, "2.0,80.0,0.5")] public float AtmosphereMinThickness = 6.0f;
+    [Export(PropertyHint.Range, "2.0,120.0,0.5")] public float AtmosphereMaxThickness = 26.0f;
+    [Export(PropertyHint.Range, "0.1,4.0,0.01")] public float AtmosphereDensity = 1.0f;
+    [Export(PropertyHint.Range, "0.0,3.0,0.01")] public float SunsetStrength = 1.0f;
+    [Export] public NodePath SunLightPath = default!;
+
+    [ExportGroup("Atmosphere Composition")]
+    [Export(PropertyHint.Range, "0.0,100.0,0.0001")] public float AtmosphereO2 = 20.95f;
+    [Export(PropertyHint.Range, "0.0,100.0,0.0001")] public float AtmosphereCH4 = 0.00018f;
+    [Export(PropertyHint.Range, "0.0,100.0,0.0001")] public float AtmosphereO3 = 0.000007f;
+    [Export(PropertyHint.Range, "0.0,100.0,0.0001")] public float AtmosphereH2O = 1.0f;
+    [Export(PropertyHint.Range, "0.0,100.0,0.0001")] public float AtmosphereCO2 = 0.042f;
+    [Export(PropertyHint.Range, "0.0,100.0,0.0001")] public float AtmosphereH2 = 0.0f;
+    [Export(PropertyHint.Range, "0.0,100.0,0.0001")] public float AtmosphereHe = 0.0f;
+    [Export(PropertyHint.Range, "0.0,100.0,0.0001")] public float AtmosphereN2 = 78.0f;
+
     private static readonly Vector3[] FaceDirections =
     {
         Vector3.Up,
@@ -87,6 +107,12 @@ public partial class PlanetBody : Node3D
     private float _lodTimer;
     private int _currentLod = -1;
     private StandardMaterial3D _material;
+    private float _observedMaxElevation;
+    private float _observedPositiveElevationSum;
+    private int _observedPositiveElevationCount;
+    private MeshInstance3D _atmosphereMesh;
+    private ShaderMaterial _atmosphereMaterial;
+    private DirectionalLight3D _sunLight;
 
     private sealed class FaceRuntime
     {
@@ -117,6 +143,9 @@ public partial class PlanetBody : Node3D
             VertexColorUseAsAlbedo = true,
         };
 
+        EnsureAtmosphereNode();
+        UpdateAtmosphereFromComposition();
+
         RebuildPlanet(MaxLodLevel);
     }
 
@@ -143,6 +172,8 @@ public partial class PlanetBody : Node3D
         {
             RebuildPlanet(targetLod);
         }
+
+        UpdateAtmosphereRuntime();
     }
 
     public float GetSurfaceHeight(Vector3 worldPosition)
@@ -155,6 +186,25 @@ public partial class PlanetBody : Node3D
     public Vector3 GetUpDirection(Vector3 worldPosition)
     {
         return (worldPosition - GlobalPosition).Normalized();
+    }
+
+    public void ApplyAtmosphereComposition(BasePlanetData data)
+    {
+        if (data == null)
+        {
+            return;
+        }
+
+        AtmosphereO2 = Mathf.Max(0.0f, data.atmosphereMO2);
+        AtmosphereCH4 = Mathf.Max(0.0f, data.atmosphereCH4);
+        AtmosphereO3 = Mathf.Max(0.0f, data.atmosphereO3);
+        AtmosphereH2O = Mathf.Max(0.0f, data.atmosphereH2O);
+        AtmosphereCO2 = Mathf.Max(0.0f, data.atmosphereCO2);
+        AtmosphereH2 = Mathf.Max(0.0f, data.atmosphereH2);
+        AtmosphereHe = Mathf.Max(0.0f, data.atmosphereHe);
+        AtmosphereN2 = Mathf.Max(0.0f, data.atmosphereN2);
+
+        UpdateAtmosphereFromComposition();
     }
 
     private void ConfigureNoise()
@@ -282,6 +332,9 @@ public partial class PlanetBody : Node3D
     {
         _currentLod = lodLevel;
         int resolution = BaseResolution << lodLevel;
+        _observedMaxElevation = 0.0f;
+        _observedPositiveElevationSum = 0.0f;
+        _observedPositiveElevationCount = 0;
 
         for (int i = 0; i < FaceDirections.Length; i++)
         {
@@ -293,6 +346,8 @@ public partial class PlanetBody : Node3D
             shape.Data = mesh.GetFaces();
             _faces[i].CollisionShape.Shape = shape;
         }
+
+        UpdateAtmosphereFromComposition();
     }
 
     private ArrayMesh BuildFaceMesh(Vector3 localUp, int resolution)
@@ -320,6 +375,15 @@ public partial class PlanetBody : Node3D
 
                 Vector3 unitSphere = pointOnCube.Normalized();
                 float elevation = SampleHeight(unitSphere);
+                if (elevation > _observedMaxElevation)
+                {
+                    _observedMaxElevation = elevation;
+                }
+                if (elevation > 0.0f)
+                {
+                    _observedPositiveElevationSum += elevation;
+                    _observedPositiveElevationCount++;
+                }
                 Vector3 vertex = unitSphere * (Radius + elevation);
 
                 vertices[index] = vertex;
@@ -530,5 +594,234 @@ public partial class PlanetBody : Node3D
                 CollisionShape = collisionShape,
             };
         }
+    }
+
+    private void EnsureAtmosphereNode()
+    {
+        if (!EnableAtmosphere)
+        {
+            return;
+        }
+
+        _atmosphereMesh = GetNodeOrNull<MeshInstance3D>("Atmosphere");
+        if (_atmosphereMesh == null)
+        {
+            _atmosphereMesh = new MeshInstance3D
+            {
+                Name = "Atmosphere",
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            };
+            AddChild(_atmosphereMesh);
+        }
+
+        SphereMesh shell = new SphereMesh
+        {
+            Radius = 1.0f,
+            RadialSegments = 96,
+            Rings = 48,
+        };
+        _atmosphereMesh.Mesh = shell;
+
+        if (_atmosphereMaterial == null)
+        {
+            Shader shader = GD.Load<Shader>("res://Shaders/planet_atmosphere.gdshader");
+            _atmosphereMaterial = new ShaderMaterial
+            {
+                Shader = shader,
+            };
+        }
+
+        _atmosphereMesh.MaterialOverride = _atmosphereMaterial;
+        _sunLight = ResolveSunLight();
+    }
+
+    private void UpdateAtmosphereFromComposition()
+    {
+        if (!EnableAtmosphere || _atmosphereMesh == null || _atmosphereMaterial == null)
+        {
+            return;
+        }
+
+        float o2 = Mathf.Max(0.0f, AtmosphereO2);
+        float ch4 = Mathf.Max(0.0f, AtmosphereCH4);
+        float o3 = Mathf.Max(0.0f, AtmosphereO3);
+        float h2o = Mathf.Max(0.0f, AtmosphereH2O);
+        float co2 = Mathf.Max(0.0f, AtmosphereCO2);
+        float h2 = Mathf.Max(0.0f, AtmosphereH2);
+        float he = Mathf.Max(0.0f, AtmosphereHe);
+        float n2 = Mathf.Max(0.0f, AtmosphereN2);
+
+        float total = o2 + ch4 + o3 + h2o + co2 + h2 + he + n2;
+        if (total <= 0.00001f)
+        {
+            _atmosphereMesh.Visible = false;
+            return;
+        }
+
+        _atmosphereMesh.Visible = true;
+
+        float surfaceRadius = EstimateSurfaceOuterRadius();
+
+        float atmosphereRadius;
+        if (AtmosphereRadiusMultiplier > 1.0f)
+        {
+            atmosphereRadius = surfaceRadius * AtmosphereRadiusMultiplier;
+        }
+        else
+        {
+            float autoThickness = EstimateAtmosphereThickness(surfaceRadius, o2, ch4, o3, h2o, co2, h2, he, n2, total);
+            atmosphereRadius = surfaceRadius + Mathf.Max(0.0f, AtmosphereBaseOffset) + autoThickness;
+        }
+
+        _atmosphereMesh.Scale = Vector3.One * atmosphereRadius;
+
+        Vector3 rayleigh = ComputeRayleighColor(o2, ch4, o3, h2o, co2, h2, he, n2, total);
+        Vector3 mie = ComputeMieColor(o2, h2o, co2, ch4, total);
+        Vector3 ozoneAbsorb = ComputeOzoneAbsorption(o3, total);
+
+        _atmosphereMaterial.SetShaderParameter("planet_radius", surfaceRadius);
+        _atmosphereMaterial.SetShaderParameter("atmosphere_radius", atmosphereRadius);
+        _atmosphereMaterial.SetShaderParameter("atmosphere_density", AtmosphereDensity);
+        _atmosphereMaterial.SetShaderParameter("sunset_strength", SunsetStrength);
+        _atmosphereMaterial.SetShaderParameter("rayleigh_rgb", rayleigh);
+        _atmosphereMaterial.SetShaderParameter("mie_rgb", mie);
+        _atmosphereMaterial.SetShaderParameter("ozone_absorption_rgb", ozoneAbsorb);
+        _atmosphereMaterial.SetShaderParameter("planet_center_ws", GlobalPosition);
+    }
+
+    private float EstimateSurfaceOuterRadius()
+    {
+        if (_observedMaxElevation > 0.0f)
+        {
+            float meanPositive = _observedPositiveElevationCount > 0
+                ? _observedPositiveElevationSum / _observedPositiveElevationCount
+                : _observedMaxElevation;
+
+            // Use a representative outer radius to keep the shell close to the terrain
+            // instead of following a single outlier peak.
+            float representative = Mathf.Lerp(meanPositive, _observedMaxElevation, 0.35f);
+            return Radius + representative + 0.5f;
+        }
+
+        float fallback = Mathf.Max(0.0f, MaxHeight) * Mathf.Max(0.0f, HeightScale);
+        return Radius + fallback + 0.5f;
+    }
+
+    private void UpdateAtmosphereRuntime()
+    {
+        if (!EnableAtmosphere || _atmosphereMaterial == null)
+        {
+            return;
+        }
+
+        if (_sunLight == null)
+        {
+            _sunLight = ResolveSunLight();
+        }
+
+        Vector3 sunDirection = _sunLight != null
+            ? _sunLight.GlobalTransform.Basis.Z.Normalized()
+            : (Vector3.Up + Vector3.Forward * 0.25f).Normalized();
+
+        _atmosphereMaterial.SetShaderParameter("planet_center_ws", GlobalPosition);
+        _atmosphereMaterial.SetShaderParameter("sun_dir_ws", sunDirection);
+    }
+
+    private DirectionalLight3D ResolveSunLight()
+    {
+        if (SunLightPath != null && !SunLightPath.IsEmpty)
+        {
+            DirectionalLight3D assigned = GetNodeOrNull<DirectionalLight3D>(SunLightPath);
+            if (assigned != null)
+            {
+                return assigned;
+            }
+        }
+
+        Node sceneRoot = GetTree()?.CurrentScene;
+        if (sceneRoot == null)
+        {
+            return null;
+        }
+
+        return FindDirectionalLightRecursive(sceneRoot);
+    }
+
+    private static DirectionalLight3D FindDirectionalLightRecursive(Node root)
+    {
+        if (root is DirectionalLight3D directional)
+        {
+            return directional;
+        }
+
+        for (int i = 0; i < root.GetChildCount(); i++)
+        {
+            DirectionalLight3D found = FindDirectionalLightRecursive(root.GetChild(i));
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    private float EstimateAtmosphereThickness(float surfaceRadius, float o2, float ch4, float o3, float h2o, float co2, float h2, float he, float n2, float total)
+    {
+        float lightGasFraction = (h2 + he) / total;
+        float heavyGasFraction = (co2 + o3 + h2o) / total;
+
+        float thicknessRatio = 0.012f;
+        thicknessRatio += 0.050f * lightGasFraction;
+        thicknessRatio += 0.006f * Mathf.Sqrt(Mathf.Clamp(total / 100.0f, 0.0f, 3.0f));
+        thicknessRatio += 0.004f * heavyGasFraction;
+
+        float rawThickness = surfaceRadius * thicknessRatio;
+        float minThickness = Mathf.Max(0.5f, AtmosphereMinThickness);
+        float maxThickness = Mathf.Max(minThickness, AtmosphereMaxThickness);
+
+        return Mathf.Clamp(rawThickness, minThickness, maxThickness);
+    }
+
+    private static Vector3 ComputeRayleighColor(float o2, float ch4, float o3, float h2o, float co2, float h2, float he, float n2, float total)
+    {
+        float nO2 = o2 / total;
+        float nCH4 = ch4 / total;
+        float nO3 = o3 / total;
+        float nH2O = h2o / total;
+        float nCO2 = co2 / total;
+        float nH2 = h2 / total;
+        float nHe = he / total;
+        float nN2 = n2 / total;
+
+        float gasStrength =
+            nN2 * 1.00f +
+            nO2 * 1.12f +
+            nCO2 * 1.55f +
+            nH2O * 1.30f +
+            nCH4 * 1.18f +
+            nO3 * 1.35f +
+            nH2 * 0.55f +
+            nHe * 0.08f;
+
+        float r = gasStrength / Mathf.Pow(680.0f / 550.0f, 4.0f);
+        float g = gasStrength;
+        float b = gasStrength / Mathf.Pow(440.0f / 550.0f, 4.0f);
+
+        Vector3 color = new Vector3(r, g, b);
+        return color * 0.55f;
+    }
+
+    private static Vector3 ComputeMieColor(float o2, float h2o, float co2, float ch4, float total)
+    {
+        float aerosolProxy = Mathf.Clamp((h2o * 1.2f + co2 * 0.35f + ch4 * 0.35f + o2 * 0.05f) / Mathf.Max(0.0001f, total), 0.0f, 1.0f);
+        float baseStrength = 0.03f + aerosolProxy * 0.22f;
+        return new Vector3(baseStrength, baseStrength * 0.98f, baseStrength * 0.92f);
+    }
+
+    private static Vector3 ComputeOzoneAbsorption(float o3, float total)
+    {
+        float ratio = Mathf.Clamp(o3 / Mathf.Max(total, 0.0001f), 0.0f, 1.0f);
+        return new Vector3(0.08f, 0.20f, 0.55f) * ratio * 8.0f;
     }
 }
