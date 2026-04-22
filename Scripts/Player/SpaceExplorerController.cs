@@ -15,15 +15,26 @@ public partial class SpaceExplorerController : CharacterBody3D
     [Export] public float FlightAcceleration = 8.0f;
     [Export] public float FlightDamping = 5.0f;
     [Export] public float MouseSensitivity = 0.0022f;
+    [Export] public NodePath HeadlightPath = default!;
+    [Export] public Key ToggleHeadlightKey = Key.F;
+    [Export] public bool StartHeadlightEnabled = false;
 
     private PlanetBody _planet;
     private Camera3D _camera;
+    private OmniLight3D _headlight;
     private float _pitch;
 
     public override void _Ready()
     {
         Input.MouseMode = Input.MouseModeEnum.Captured;
         _camera = GetNodeOrNull<Camera3D>("Camera3D");
+        _headlight = (HeadlightPath != null && !HeadlightPath.IsEmpty)
+            ? GetNodeOrNull<OmniLight3D>(HeadlightPath)
+            : GetNodeOrNull<OmniLight3D>("PlayerFillLight");
+        if (_headlight != null)
+        {
+            _headlight.Visible = StartHeadlightEnabled;
+        }
 
         if (PlanetPath != null && !PlanetPath.IsEmpty)
         {
@@ -48,6 +59,14 @@ public partial class SpaceExplorerController : CharacterBody3D
             Input.MouseMode = Input.MouseMode == Input.MouseModeEnum.Captured
                 ? Input.MouseModeEnum.Visible
                 : Input.MouseModeEnum.Captured;
+        }
+
+        if (@event is InputEventKey keyEvent
+            && keyEvent.Pressed
+            && !keyEvent.Echo
+            && keyEvent.Keycode == ToggleHeadlightKey)
+        {
+            ToggleHeadlight();
         }
     }
 
@@ -149,5 +168,19 @@ public partial class SpaceExplorerController : CharacterBody3D
     private static Vector3 FlattenXZ(Vector3 value)
     {
         return new Vector3(value.X, 0.0f, value.Z);
+    }
+
+    private void ToggleHeadlight()
+    {
+        if (_headlight == null)
+        {
+            _headlight = GetNodeOrNull<OmniLight3D>("PlayerFillLight");
+            if (_headlight == null)
+            {
+                return;
+            }
+        }
+
+        _headlight.Visible = !_headlight.Visible;
     }
 }
