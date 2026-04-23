@@ -67,6 +67,10 @@ CraterRimColor = Color(0.86, 0.79, 0.68, 1)
 CraterFloorColor = Color(0.22, 0.22, 0.24, 1)
 ColorContrastStrength = 0.72
 AtmosphereRadiusMultiplier = 1.05
+AtmosphereMaxThickness = 30.0
+AtmosphereDensity = 4.0
+AtmosphereHe = 10.0
+AtmosphereN2 = 68.0
 
 [node name="CelestialMotion" type="Node3D" parent="Planet" unique_id=382079237]
 script = ExtResource("3_2ly1l")

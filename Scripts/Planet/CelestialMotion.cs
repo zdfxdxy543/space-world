@@ -8,6 +8,7 @@ public partial class CelestialMotion : Node3D
     [Export] public float OrbitRadius = 0.0f;
     [Export] public float OrbitDegreesPerSecond = 0.0f;
     [Export] public Vector3 OrbitAxis = Vector3.Up;
+    [Export] public bool TidalLockToOrbitCenter = false;
 
     private Node3D _orbitCenter;
     private Node3D _target;
@@ -45,5 +46,10 @@ public partial class CelestialMotion : Node3D
         Quaternion q = new Quaternion(OrbitAxis.Normalized(), _orbitAngle);
         Vector3 offset = q * Vector3.Forward * OrbitRadius;
         _target.GlobalPosition = _orbitCenter.GlobalPosition + offset;
+
+        if (TidalLockToOrbitCenter)
+        {
+            _target.LookAt(_orbitCenter.GlobalPosition, OrbitAxis.Normalized());
+        }
     }
 }
