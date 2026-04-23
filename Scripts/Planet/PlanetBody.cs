@@ -8,7 +8,8 @@ public partial class PlanetBody : Node3D
     [Export] public float MaxHeight = 14.0f;
     [Export] public int BaseResolution = 10;
     [Export] public int MaxLodLevel = 3;
-    [Export] public float LodUpdateInterval = 0.35f;
+    [Export] public float LodUpdateInterval = 0.5f;
+    [Export] public float RebuildCooldown = 2.0f;
 
     [ExportGroup("Terrain - Lunar")]
     [Export] public float HeightScale = 1.0f;
@@ -48,6 +49,9 @@ public partial class PlanetBody : Node3D
     [Export] public Color SurfaceColor = new Color("4f7a5a");
     [Export] public Color HighlandColor = new Color("8f8a80");
     [Export] public Color MariaColor = new Color("595756");
+    [Export] public float WaterCoverage = 0.0f;
+    [Export] public float SeaLevel = -0.1f;
+    [Export] public Color OceanColor = new Color("1a4d6e");
     [Export] public Color CraterRimColor = new Color("c9bdaa");
     [Export] public Color CraterFloorColor = new Color("3f3d3b");
     [Export] public float ColorContrastStrength = 0.55f;
@@ -105,6 +109,7 @@ public partial class PlanetBody : Node3D
     private FastNoiseLite _mariaNoise = new FastNoiseLite();
     private Camera3D _camera;
     private float _lodTimer;
+    private float _rebuildCooldownTimer;
     private int _currentLod = -1;
     private StandardMaterial3D _material;
     private float _observedMaxElevation;
@@ -151,7 +156,11 @@ public partial class PlanetBody : Node3D
 
     public override void _Process(double delta)
     {
-        _lodTimer += (float)delta;
+        float dt = (float)delta;
+        
+        _rebuildCooldownTimer = Mathf.Max(0f, _rebuildCooldownTimer - dt);
+        
+        _lodTimer += dt;
         if (_lodTimer < LodUpdateInterval)
         {
             return;
@@ -168,9 +177,10 @@ public partial class PlanetBody : Node3D
         }
 
         int targetLod = ComputeTargetLod(_camera.GlobalPosition.DistanceTo(GlobalPosition));
-        if (targetLod != _currentLod)
+        if (targetLod != _currentLod && _rebuildCooldownTimer <= 0f)
         {
             RebuildPlanet(targetLod);
+            _rebuildCooldownTimer = RebuildCooldown;
         }
 
         UpdateAtmosphereRuntime();
@@ -487,6 +497,16 @@ public partial class PlanetBody : Node3D
 
     private Color EvaluateTerrainColor(Vector3 direction, float elevation)
     {
+        float normalizedElevation = elevation / Mathf.Max(0.001f, MaxHeight * Mathf.Max(0.0f, HeightScale));
+        
+        float oceanThreshold = 0f;
+        if (WaterCoverage > 0f)
+        {
+            oceanThreshold = Mathf.Clamp(SeaLevel + (1f - WaterCoverage) * 0.5f, -1f, 1f);
+        }
+        
+        bool isOcean = normalizedElevation < oceanThreshold;
+        
         float mariaSignal = (_mariaNoise.GetNoise3Dv(direction * MariaFrequency) + 1.0f) * 0.5f;
         float mariaMask = SmoothStep(MariaThreshold, 1.0f, mariaSignal);
 
@@ -500,7 +520,16 @@ public partial class PlanetBody : Node3D
             0.0f,
             1.0f);
 
-        Color biome = HighlandColor.Lerp(MariaColor, mariaMask);
+        Color biome;
+        if (isOcean)
+        {
+            biome = OceanColor;
+        }
+        else
+        {
+            biome = HighlandColor.Lerp(MariaColor, mariaMask);
+        }
+        
         Color withCraters = biome.Lerp(CraterRimColor, rimNorm * 0.9f);
         withCraters = withCraters.Lerp(CraterFloorColor, floorNorm * 0.9f);
 
@@ -514,7 +543,6 @@ public partial class PlanetBody : Node3D
             Mathf.Clamp(withCraters.B * contrast, 0.0f, 1.0f),
             1.0f);
 
-        // Keep legacy tint as final grade control.
         return withCraters * SurfaceColor;
     }
 

@@ -1,4 +1,5 @@
 using System;
+using Godot;
 
 public static class MathX
 {
@@ -124,6 +125,16 @@ public static class MathX
 
     public static double Abs(double x)
     {
-        return Math.Abs(x);
+        return System.Math.Abs(x);
+    }
+
+    public static float DegToRad(float degrees)
+    {
+        return degrees * Mathf.Pi / 180f;
+    }
+
+    public static double DegToRad(double degrees)
+    {
+        return degrees * System.Math.PI / 180.0;
     }
 }

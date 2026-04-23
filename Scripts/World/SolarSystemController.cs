@@ -2,6 +2,26 @@ using Godot;
 using System;
 using System.Collections.Generic;
 
+public class PlanetMotionData
+{
+    public PlanetBody Body;
+    public PlanetData Data;
+    public Node3D OrbitCenter;
+    public float OrbitAngle;
+    public float OrbitRadius;
+    public bool IsTidallyLocked;
+}
+
+public class MoonMotionData
+{
+    public PlanetBody Body;
+    public MoonData Data;
+    public Node3D OrbitCenter;
+    public float OrbitAngle;
+    public float OrbitRadius;
+    public bool IsTidallyLocked;
+}
+
 public partial class SolarSystemController : Node3D
 {
     [Export] public NodePath PlanetPath = default!;
@@ -13,8 +33,9 @@ public partial class SolarSystemController : Node3D
     private PlanetBody _planet;
     private SpaceExplorerController _player;
     private StarSystemData? _starSystem;
-    private List<PlanetBody> _generatedPlanets = new List<PlanetBody>();
+    private List<PlanetMotionData> _planetMotions = new List<PlanetMotionData>();
     private Node3D? _sunNode;
+    private List<MoonMotionData> _moonMotions = new List<MoonMotionData>();
 
     public override void _Ready()
     {
@@ -43,9 +64,9 @@ public partial class SolarSystemController : Node3D
                 spawnPoint = _sunNode.GlobalPosition + new Vector3(10, 10, 10);
                 lookTarget = _sunNode.GlobalPosition;
             }
-            else if (_generatedPlanets.Count > 0)
+            else if (_planetMotions.Count > 0)
             {
-                _planet = _generatedPlanets[0];
+                _planet = _planetMotions[0].Body;
                 spawnPoint = _planet.GlobalPosition + Vector3.Up * (_planet.Radius + _planet.MaxHeight + 55.0f);
                 lookTarget = _planet.GlobalPosition;
             }
@@ -88,7 +109,7 @@ public partial class SolarSystemController : Node3D
         };
         AddChild(_sunNode);
         _sunNode.AddToGroup("generated_sun");
-
+  
         float sunDistance = StarDistance;
         _sunNode.GlobalPosition = new Vector3(sunDistance, sunDistance * 0.3f, 0);
 
@@ -154,7 +175,23 @@ public partial class SolarSystemController : Node3D
 
             ApplyPlanetProperties(planetBody, planet);
 
-            _generatedPlanets.Add(planetBody);
+            var orbitCenter = new Node3D { Name = planet.name + "_OrbitCenter" };
+            AddChild(orbitCenter);
+            orbitCenter.GlobalPosition = _sunNode != null ? _sunNode.GlobalPosition : Vector3.Zero;
+
+            float orbitPeriod = planet.orbitPeriod > 0 ? planet.orbitPeriod : 8760f;
+            float orbitSpeedDegPerSec = 360f / (float)orbitPeriod;
+
+            var motionData = new PlanetMotionData
+            {
+                Body = planetBody,
+                Data = planet,
+                OrbitCenter = orbitCenter,
+                OrbitAngle = (float)(i * Math.PI * 2 / planetPart.planets.Count),
+                OrbitRadius = planetOrbitDistance,
+                IsTidallyLocked = false
+            };
+            _planetMotions.Add(motionData);
 
             if (planet.moons.Count > 0)
             {
@@ -172,45 +209,92 @@ public partial class SolarSystemController : Node3D
             planetBody.SurfaceColor = new Color(0.4f, 0.5f, 0.3f);
             planetBody.HighlandColor = new Color(0.5f, 0.45f, 0.4f);
             planetBody.MariaColor = new Color(0.3f, 0.3f, 0.35f);
-            planetBody.EnableAtmosphere = true;
-            planetBody.AtmosphereRadiusMultiplier = 1.05f;
-            planetBody.AtmosphereMaxThickness = 30f;
-            planetBody.AtmosphereDensity = 4f;
         }
         else if (planetType == PlanetType.Gas)
         {
             planetBody.SurfaceColor = new Color(0.9f, 0.7f, 0.5f);
             planetBody.HighlandColor = new Color(0.8f, 0.6f, 0.4f);
             planetBody.MariaColor = new Color(0.7f, 0.5f, 0.4f);
-            planetBody.EnableAtmosphere = true;
-            planetBody.AtmosphereRadiusMultiplier = 1.1f;
-            planetBody.AtmosphereMaxThickness = 80f;
-            planetBody.AtmosphereDensity = 8f;
         }
-        // else if (planetType == PlanetType.Ocean)
-        // {
-        //     planetBody.SurfaceColor = new Color(0.2f, 0.4f, 0.8f);
-        //     planetBody.HighlandColor = new Color(0.3f, 0.5f, 0.4f);
-        //     planetBody.MariaColor = new Color(0.1f, 0.2f, 0.5f);
-        //     planetBody.EnableAtmosphere = true;
-        //     planetBody.AtmosphereRadiusMultiplier = 1.03f;
-        //     planetBody.AtmosphereMaxThickness = 20f;
-        //     planetBody.AtmosphereDensity = 3f;
-        // }
         else
         {
             planetBody.SurfaceColor = new Color(0.6f, 0.6f, 0.6f);
             planetBody.HighlandColor = new Color(0.7f, 0.7f, 0.7f);
             planetBody.MariaColor = new Color(0.5f, 0.5f, 0.5f);
-            planetBody.EnableAtmosphere = false;
         }
+
+        planetBody.WaterCoverage = Math.Clamp(planet.waterCoverage, 0f, 1f);
+
+        float obliquityDeg = planet.obliquity;
+        if (obliquityDeg > 0)
+        {
+            planetBody.RotationDegrees = new Vector3(0, 0, (float)obliquityDeg);
+        }
+
+        ApplyAtmosphereProperties(planetBody, planet);
 
         planetBody.HeightScale = Math.Clamp(planet.radius * 0.01f, 0.5f, 5f);
         planetBody.Seed = (int)(planet.mass * 1000);
     }
 
+    private void ApplyAtmosphereProperties(PlanetBody planetBody, BasePlanetData data)
+    {
+        bool hasAtmosphere = data.atmosphereRetentionFactor > 0.1f;
+        planetBody.EnableAtmosphere = hasAtmosphere;
+
+        if (!hasAtmosphere) return;
+
+        float pressure = data.atmospherePressure;
+        if (pressure <= 0) pressure = data.totalAtmosphereMass * 100f;
+        pressure = Math.Clamp(pressure, 0.01f, 5000f);
+
+        if (data.atmosphereType == AtmosphereType.Venus || data.atmosphereType == AtmosphereType.Dulcinea)
+        {
+            planetBody.AtmosphereRadiusMultiplier = 1.1f;
+            planetBody.AtmosphereMaxThickness = Math.Clamp(pressure * 0.1f, 20f, 120f);
+            planetBody.AtmosphereDensity = Math.Clamp(pressure * 0.05f, 1f, 10f);
+        }
+        else if (data.atmosphereType == AtmosphereType.Earth || data.atmosphereType == AtmosphereType.Titan)
+        {
+            planetBody.AtmosphereRadiusMultiplier = 1.05f;
+            planetBody.AtmosphereMaxThickness = Math.Clamp(pressure * 0.05f, 10f, 40f);
+            planetBody.AtmosphereDensity = Math.Clamp(pressure * 0.02f, 0.5f, 5f);
+        }
+        else if (data.atmosphereType == AtmosphereType.Mars)
+        {
+            planetBody.AtmosphereRadiusMultiplier = 1.03f;
+            planetBody.AtmosphereMaxThickness = Math.Clamp(pressure * 0.05f, 5f, 20f);
+            planetBody.AtmosphereDensity = Math.Clamp(pressure * 0.02f, 0.3f, 2f);
+        }
+        else
+        {
+            float retentionFactor = Math.Clamp(data.atmosphereRetentionFactor, 0f, 2f);
+            planetBody.AtmosphereRadiusMultiplier = 1.0f + retentionFactor * 0.05f;
+            planetBody.AtmosphereMaxThickness = Math.Clamp(pressure * 0.02f + 5f, 5f, 50f);
+            planetBody.AtmosphereDensity = Math.Clamp(retentionFactor * 0.5f, 0.1f, 3f);
+        }
+
+        planetBody.AtmosphereH2 = Math.Clamp(data.atmosphereH2, 0f, 100f);
+        planetBody.AtmosphereHe = Math.Clamp(data.atmosphereHe, 0f, 100f);
+        planetBody.AtmosphereN2 = Math.Clamp(data.atmosphereN2, 0f, 100f);
+        planetBody.AtmosphereCO2 = Math.Clamp(data.atmosphereCO2, 0f, 100f);
+        planetBody.AtmosphereO2 = Math.Clamp(data.atmosphereMO2, 0f, 100f);
+        planetBody.AtmosphereCH4 = Math.Clamp(data.atmosphereCH4, 0f, 100f);
+        planetBody.AtmosphereO3 = Math.Clamp(data.atmosphereO3, 0f, 100f);
+        planetBody.AtmosphereH2O = Math.Clamp(data.atmosphereH2O, 0f, 100f);
+
+        planetBody.ApplyAtmosphereComposition(data);
+    }
+
     private void CreateMoons(Node3D parentPlanet, PlanetData planet, float planetDistance)
     {
+        if (planet.moons == null || planet.moons.Count == 0)
+        {
+            GD.Print($"Planet {planet.name} has no moons");
+            return;
+        }
+
+        GD.Print($"Creating {planet.moons.Count} moons for planet {planet.name}");
         for (int i = 0; i < planet.moons.Count; i++)
         {
             var moon = planet.moons[i];
@@ -227,16 +311,38 @@ public partial class SolarSystemController : Node3D
             parentPlanet.AddChild(moonBody);
 
             float moonDistance = planet.radius * 0.01f + (i + 1) * 10f;
-            moonBody.GlobalPosition = new Vector3(moonDistance, 0, 0);
+
+            var moonOrbitCenter = new Node3D { Name = moon.name + "_OrbitCenter" };
+            parentPlanet.AddChild(moonOrbitCenter);
+
+            var moonMotion = new MoonMotionData
+            {
+                Body = moonBody,
+                Data = moon,
+                OrbitCenter = moonOrbitCenter,
+                OrbitAngle = (float)(i * Math.PI * 2 / planet.moons.Count),
+                OrbitRadius = moonDistance,
+                IsTidallyLocked = isTideLocked
+            };
+            _moonMotions.Add(moonMotion);
 
             moonBody.SurfaceColor = moon.moonType == MoonType.Rocky 
                 ? new Color(0.6f, 0.5f, 0.4f) 
                 : new Color(0.7f, 0.8f, 0.9f);
             moonBody.HighlandColor = moonBody.SurfaceColor * 1.2f;
             moonBody.MariaColor = moonBody.SurfaceColor * 0.8f;
-            moonBody.EnableAtmosphere = false;
             moonBody.HeightScale = 0.5f;
             moonBody.Seed = (int)(moon.mass * 10000);
+
+            moonBody.WaterCoverage = Math.Clamp(moon.waterCoverage, 0f, 1f);
+
+            float moonObliquityDeg = moon.obliquity;
+            if (moonObliquityDeg > 0)
+            {
+                moonBody.RotationDegrees = new Vector3(0, 0, (float)moonObliquityDeg);
+            }
+
+            ApplyAtmosphereProperties(moonBody, moon);
 
             if (isTideLocked)
             {
@@ -267,5 +373,54 @@ public partial class SolarSystemController : Node3D
             return new Color(1.0f, 0.8f, 0.5f);
         else
             return new Color(1.0f, 0.5f, 0.3f);
+    }
+
+    public override void _Process(double delta)
+    {
+        float dt = (float)delta;
+
+        foreach (var motion in _planetMotions)
+        {
+            if (motion.Data == null || motion.Body == null || motion.OrbitCenter == null)
+            {
+                continue;
+            }
+
+            float orbitPeriod = motion.Data.orbitPeriod > 0 ? motion.Data.orbitPeriod : 8760f;
+            float orbitSpeedDegPerSec = 360f / orbitPeriod;
+            motion.OrbitAngle += orbitSpeedDegPerSec * dt * 0.001f;
+
+            float x = (float)Math.Cos(motion.OrbitAngle) * motion.OrbitRadius;
+            float z = (float)Math.Sin(motion.OrbitAngle) * motion.OrbitRadius;
+            motion.Body.GlobalPosition = motion.OrbitCenter.GlobalPosition + new Vector3(x, 0, z);
+
+            if (motion.Data.rotationPeriod > 0)
+            {
+                float rotationSpeedDegPerSec = 360f / (float)motion.Data.rotationPeriod;
+                motion.Body.Rotate(Vector3.Up, Mathf.DegToRad(rotationSpeedDegPerSec * dt));
+            }
+        }
+
+        foreach (var motion in _moonMotions)
+        {
+            if (motion.Data == null || motion.Body == null || motion.OrbitCenter == null)
+            {
+                continue;
+            }
+
+            float orbitPeriod = motion.Data.orbitPeriod > 0 ? motion.Data.orbitPeriod : 720f;
+            float orbitSpeedDegPerSec = 360f / orbitPeriod;
+            motion.OrbitAngle += orbitSpeedDegPerSec * dt * 0.001f;
+
+            float x = (float)Math.Cos(motion.OrbitAngle) * motion.OrbitRadius;
+            float z = (float)Math.Sin(motion.OrbitAngle) * motion.OrbitRadius;
+            motion.Body.GlobalPosition = motion.OrbitCenter.GlobalPosition + new Vector3(x, 0, z);
+
+            if (motion.Data.rotationPeriod > 0 && !motion.IsTidallyLocked)
+            {
+                float rotationSpeedDegPerSec = 360f / (float)motion.Data.rotationPeriod;
+                motion.Body.Rotate(Vector3.Up, Mathf.DegToRad(rotationSpeedDegPerSec * dt));
+            }
+        }
     }
 }
