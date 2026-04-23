@@ -28,7 +28,7 @@ public partial class PlanetBody : Node3D
     [Export] public int CraterCount = 260;
     [Export] public float CraterMinRadiusDeg = 0.8f;
     [Export] public float CraterMaxRadiusDeg = 9.0f;
-    [Export] public float LargeCraterRatio = 0.12f;
+    [Export] public float LargeCraterRatio = 0.5f;
     [Export] public float CraterDepthScale = 0.17f;
     [Export] public float CraterRimHeightScale = 0.22f;
     [Export] public float CraterRimWidth = 0.36f;

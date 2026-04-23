@@ -47,7 +47,7 @@ public partial class SpaceExplorerController : CharacterBody3D
         if (@event is InputEventMouseMotion mouseMotion)
         {
             RotateY(-mouseMotion.Relative.X * MouseSensitivity);
-            _pitch = Mathf.Clamp(_pitch - mouseMotion.Relative.Y * MouseSensitivity, -1.3f, 1.3f);
+            _pitch -= mouseMotion.Relative.Y * MouseSensitivity;
             if (_camera != null)
             {
                 _camera.Rotation = new Vector3(_pitch, 0.0f, 0.0f);
