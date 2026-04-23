@@ -112,7 +112,7 @@ public partial class PlanetBody : Node3D
     private int _observedPositiveElevationCount;
     private MeshInstance3D _atmosphereMesh;
     private ShaderMaterial _atmosphereMaterial;
-    private DirectionalLight3D _sunLight;
+    private Light3D? _sunLight;
 
     private sealed class FaceRuntime
     {
@@ -720,19 +720,29 @@ public partial class PlanetBody : Node3D
             _sunLight = ResolveSunLight();
         }
 
-        Vector3 sunDirection = _sunLight != null
-            ? _sunLight.GlobalTransform.Basis.Z.Normalized()
-            : (Vector3.Up + Vector3.Forward * 0.25f).Normalized();
+        Vector3 sunDirection = (Vector3.Up + Vector3.Forward * 0.25f).Normalized();
+        if (_sunLight != null && _sunLight is DirectionalLight3D)
+        {
+            sunDirection = _sunLight.GlobalTransform.Basis.Z.Normalized();
+        }
+        else
+        {
+            var sunNode = GetTree().GetFirstNodeInGroup("generated_sun") as Node3D;
+            if (sunNode != null)
+            {
+                sunDirection = (sunNode.GlobalPosition - GlobalPosition).Normalized();
+            }
+        }
 
         _atmosphereMaterial.SetShaderParameter("planet_center_ws", GlobalPosition);
         _atmosphereMaterial.SetShaderParameter("sun_dir_ws", sunDirection);
     }
 
-    private DirectionalLight3D ResolveSunLight()
+    private Light3D? ResolveSunLight()
     {
         if (SunLightPath != null && !SunLightPath.IsEmpty)
         {
-            DirectionalLight3D assigned = GetNodeOrNull<DirectionalLight3D>(SunLightPath);
+            Light3D? assigned = GetNodeOrNull<Light3D>(SunLightPath);
             if (assigned != null)
             {
                 return assigned;
@@ -745,19 +755,19 @@ public partial class PlanetBody : Node3D
             return null;
         }
 
-        return FindDirectionalLightRecursive(sceneRoot);
+        return FindLightRecursive(sceneRoot);
     }
 
-    private static DirectionalLight3D FindDirectionalLightRecursive(Node root)
+    private static Light3D? FindLightRecursive(Node root)
     {
-        if (root is DirectionalLight3D directional)
+        if (root is Light3D light)
         {
-            return directional;
+            return light;
         }
 
         for (int i = 0; i < root.GetChildCount(); i++)
         {
-            DirectionalLight3D found = FindDirectionalLightRecursive(root.GetChild(i));
+            Light3D? found = FindLightRecursive(root.GetChild(i));
             if (found != null)
             {
                 return found;

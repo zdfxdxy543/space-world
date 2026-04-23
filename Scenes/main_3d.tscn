@@ -1,8 +1,6 @@
 [gd_scene format=3 uid="uid://bxfh0i1r5mav5"]
 
 [ext_resource type="Script" uid="uid://4hkk3agemxmn" path="res://Scripts/World/SolarSystemController.cs" id="1_hjs3j"]
-[ext_resource type="Script" uid="uid://bdm5fwqmxwqd7" path="res://Scripts/Planet/PlanetBody.cs" id="2_hu2ap"]
-[ext_resource type="Script" uid="uid://cogrseujw52ql" path="res://Scripts/Planet/CelestialMotion.cs" id="3_2ly1l"]
 [ext_resource type="Script" uid="uid://nili4mg2wtlm" path="res://Scripts/Player/SpaceExplorerController.cs" id="4_0h7yg"]
 
 [sub_resource type="Environment" id="Environment_tq2fu"]
@@ -18,68 +16,16 @@ height = 2.2
 
 [node name="Main" type="Node3D" unique_id=251416571]
 script = ExtResource("1_hjs3j")
-PlanetPath = NodePath("Planet")
+PlanetPath = NodePath("")
 PlayerPath = NodePath("Player")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1228849852]
 environment = SubResource("Environment_tq2fu")
 
-[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1925517082]
-transform = Transform3D(0.258819, 0, 0.965926, 0.330366, 0.939693, -0.0885213, -0.907673, 0.34202, 0.24321, 0, 520, 0)
-light_energy = 2.4
-shadow_enabled = true
-
-[node name="Planet" type="Node3D" parent="." unique_id=21383792]
-script = ExtResource("2_hu2ap")
-MaxHeight = 110.0
-BaseResolution = 8
-MaxLodLevel = 2
-LodUpdateInterval = 0.4
-HeightScale = 1.85
-BaseFrequency = 2.1
-BaseReliefStrength = 0.32
-DetailFrequency = 22.0
-DetailStrength = 0.08
-MariaFrequency = 1.05
-MariaThreshold = 0.6
-MariaDepression = 0.18
-MariaDetailSuppression = 0.72
-SpikeSoftClamp = 0.82
-AngularSmoothingStrength = 0.62
-AngularSmoothingRadiusDeg = 0.7
-CraterCount = 320
-CraterMinRadiusDeg = 0.9
-CraterMaxRadiusDeg = 11.0
-LargeCraterRatio = 0.14
-CraterDepthScale = 0.34
-CraterRimHeightScale = 0.36
-CraterRimWidth = 0.34
-CraterBlendStrength = 1.2
-AntiCellFrequency = 2.15
-AntiCellThreshold = 0.56
-AntiCellJitter = 0.5
-AntiCellCandidateMultiplier = 8
-CraterMinAngularSeparationDeg = 0.42
-SurfaceColor = Color(0.92, 0.92, 0.9, 1)
-HighlandColor = Color(0.73, 0.69, 0.64, 1)
-MariaColor = Color(0.34, 0.35, 0.37, 1)
-CraterRimColor = Color(0.86, 0.79, 0.68, 1)
-CraterFloorColor = Color(0.22, 0.22, 0.24, 1)
-ColorContrastStrength = 0.72
-AtmosphereRadiusMultiplier = 1.05
-AtmosphereMaxThickness = 30.0
-AtmosphereDensity = 4.0
-AtmosphereHe = 10.0
-AtmosphereN2 = 68.0
-
-[node name="CelestialMotion" type="Node3D" parent="Planet" unique_id=382079237]
-script = ExtResource("3_2ly1l")
-SelfRotationDegreesPerSecond = 1.4
-
 [node name="Player" type="CharacterBody3D" parent="." unique_id=1181473724]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 255, 0)
 script = ExtResource("4_0h7yg")
-PlanetPath = NodePath("../Planet")
+PlanetPath = NodePath("")
 MoveSpeed = 34.0
 MouseSensitivity = 0.0023
 
